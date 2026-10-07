@@ -27,6 +27,7 @@ from app.notifications.routes import router as notifications_router
 from app.part_requests.routes import router as part_requests_router
 from app.parts.routes import router as parts_router
 from app.payments.routes import router as payments_router
+from app.portal.routes import router as portal_router
 from app.purchase_orders.routes import router as purchase_orders_router
 from app.qc.routes import router as qc_router
 from app.repair_orders.routes import router as repair_orders_router
@@ -86,6 +87,9 @@ def create_app() -> FastAPI:
     staff_only = [Depends(require_staff())]
 
     app.include_router(auth_router, prefix=f"{api_prefix}/auth", tags=["auth"])
+    app.include_router(
+        portal_router, prefix=f"{api_prefix}/portal", tags=["portal"]
+    )
     app.include_router(
         notifications_router, prefix=f"{api_prefix}/notifications", tags=["notifications"]
     )
