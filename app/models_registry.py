@@ -18,6 +18,7 @@ from app.customers import models as customer_models
 from app.estimates import models as estimate_models
 from app.inspections import models as inspection_models
 from app.inventory import models as inventory_models
+from app.invoices import models as invoice_models
 from app.labor import models as labor_models
 from app.notifications import models as notification_models
 from app.part_requests import models as part_request_models
@@ -38,6 +39,7 @@ __all__ = [
     "estimate_models",
     "inspection_models",
     "inventory_models",
+    "invoice_models",
     "labor_models",
     "notification_models",
     "part_models",
