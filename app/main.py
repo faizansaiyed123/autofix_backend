@@ -32,6 +32,7 @@ from app.qc.routes import router as qc_router
 from app.repair_orders.routes import router as repair_orders_router
 from app.service_requests.routes import router as service_requests_router
 from app.suppliers.routes import router as suppliers_router
+from app.users.routes import router as users_router
 from app.vehicles.routes import router as vehicles_router
 
 
@@ -87,6 +88,9 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=f"{api_prefix}/auth", tags=["auth"])
     app.include_router(
         notifications_router, prefix=f"{api_prefix}/notifications", tags=["notifications"]
+    )
+    app.include_router(
+        users_router, prefix=f"{api_prefix}/users", tags=["users"], dependencies=staff_only
     )
     app.include_router(
         customers_router, prefix=f"{api_prefix}/customers", tags=["customers"],
