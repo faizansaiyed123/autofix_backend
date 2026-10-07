@@ -11,6 +11,7 @@ configure_logging(settings.APP_ENV)
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.appointments.routes import router as appointments_router
 from app.audit.routes import router as audit_router
 from app.auth.dependencies import require_staff
 from app.auth.routes import router as auth_router
@@ -83,6 +84,10 @@ def create_app() -> FastAPI:
     app.include_router(
         service_requests_router, prefix=f"{api_prefix}/service_requests",
         tags=["service_requests"], dependencies=staff_only,
+    )
+    app.include_router(
+        appointments_router, prefix=f"{api_prefix}/appointments", tags=["appointments"],
+        dependencies=staff_only,
     )
     app.include_router(
         checkins_router, prefix=f"{api_prefix}/check_ins", tags=["check_ins"],
