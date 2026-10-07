@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.audit.routes import router as audit_router
 from app.auth.dependencies import require_staff
 from app.auth.routes import router as auth_router
+from app.checkins.routes import router as checkins_router
 from app.core.database import close_engine, init_db
 from app.customers.routes import router as customers_router
 from app.service_requests.routes import router as service_requests_router
@@ -81,6 +82,10 @@ def create_app() -> FastAPI:
     app.include_router(
         service_requests_router, prefix=f"{api_prefix}/service_requests",
         tags=["service_requests"], dependencies=staff_only,
+    )
+    app.include_router(
+        checkins_router, prefix=f"{api_prefix}/check_ins", tags=["check_ins"],
+        dependencies=staff_only,
     )
     # Read-only, and last: an audit log is not part of any day's work, it is the
     # record of what happened during one.
