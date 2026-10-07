@@ -18,6 +18,7 @@ from app.auth.routes import router as auth_router
 from app.checkins.routes import router as checkins_router
 from app.core.database import close_engine, init_db
 from app.customers.routes import router as customers_router
+from app.estimates.routes import router as estimates_router
 from app.inspections.routes import router as inspections_router
 from app.notifications.routes import router as notifications_router
 from app.service_requests.routes import router as service_requests_router
@@ -99,6 +100,10 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         inspections_router, prefix=f"{api_prefix}/inspections", tags=["inspections"],
+        dependencies=staff_only,
+    )
+    app.include_router(
+        estimates_router, prefix=f"{api_prefix}/estimates", tags=["estimates"],
         dependencies=staff_only,
     )
     # Read-only, and last: an audit log is not part of any day's work, it is the
