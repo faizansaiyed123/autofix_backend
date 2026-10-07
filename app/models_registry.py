@@ -23,6 +23,7 @@ from app.labor import models as labor_models
 from app.notifications import models as notification_models
 from app.part_requests import models as part_request_models
 from app.parts import models as part_models
+from app.payments import models as payment_models
 from app.purchase_orders import models as purchase_order_models
 from app.qc import models as qc_models
 from app.repair_orders import models as repair_order_models
@@ -44,6 +45,7 @@ __all__ = [
     "notification_models",
     "part_models",
     "part_request_models",
+    "payment_models",
     "purchase_order_models",
     "qc_models",
     "repair_order_models",
