@@ -19,6 +19,7 @@ from app.checkins.routes import router as checkins_router
 from app.core.database import close_engine, init_db
 from app.customers.routes import router as customers_router
 from app.inspections.routes import router as inspections_router
+from app.notifications.routes import router as notifications_router
 from app.service_requests.routes import router as service_requests_router
 from app.vehicles.routes import router as vehicles_router
 
@@ -73,6 +74,9 @@ def create_app() -> FastAPI:
     staff_only = [Depends(require_staff())]
 
     app.include_router(auth_router, prefix=f"{api_prefix}/auth", tags=["auth"])
+    app.include_router(
+        notifications_router, prefix=f"{api_prefix}/notifications", tags=["notifications"]
+    )
     app.include_router(
         customers_router, prefix=f"{api_prefix}/customers", tags=["customers"],
         dependencies=staff_only,

@@ -16,6 +16,7 @@ from app.auth import models as auth_models
 from app.checkins import models as checkin_models
 from app.customers import models as customer_models
 from app.inspections import models as inspection_models
+from app.notifications import models as notification_models
 from app.service_requests import models as service_request_models
 from app.vehicles import models as vehicle_models
 
@@ -26,6 +27,7 @@ __all__ = [
     "checkin_models",
     "customer_models",
     "inspection_models",
+    "notification_models",
     "service_request_models",
     "vehicle_models",
 ]
