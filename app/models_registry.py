@@ -13,11 +13,13 @@ from __future__ import annotations
 from app.audit import models as audit_models
 from app.auth import models as auth_models
 from app.customers import models as customer_models
+from app.service_requests import models as service_request_models
 from app.vehicles import models as vehicle_models
 
 __all__ = [
     "audit_models",
     "auth_models",
     "customer_models",
+    "service_request_models",
     "vehicle_models",
 ]
