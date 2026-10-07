@@ -1,0 +1,26 @@
+# The build context is the backend directory, so this is everything that must not
+# end up in the image.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Tests are not in the runtime image; they are verified by CI against the same
+# commit, and shipping them would put a second, always-outdated copy of the
+# codebase in the image.
+tests/
+
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore
+README*.md
