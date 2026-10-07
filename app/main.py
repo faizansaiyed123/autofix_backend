@@ -16,6 +16,7 @@ from app.auth.dependencies import require_staff
 from app.auth.routes import router as auth_router
 from app.core.database import close_engine, init_db
 from app.customers.routes import router as customers_router
+from app.vehicles.routes import router as vehicles_router
 
 
 def create_app() -> FastAPI:
@@ -70,6 +71,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=f"{api_prefix}/auth", tags=["auth"])
     app.include_router(
         customers_router, prefix=f"{api_prefix}/customers", tags=["customers"],
+        dependencies=staff_only,
+    )
+    app.include_router(
+        vehicles_router, prefix=f"{api_prefix}/vehicles", tags=["vehicles"],
         dependencies=staff_only,
     )
     # Read-only, and last: an audit log is not part of any day's work, it is the
