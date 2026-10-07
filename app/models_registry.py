@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from app.audit import models as audit_models
 from app.auth import models as auth_models
+from app.customers import models as customer_models
 
 __all__ = [
     "audit_models",
     "auth_models",
+    "customer_models",
 ]
