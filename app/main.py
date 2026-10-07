@@ -20,9 +20,11 @@ from app.core.database import close_engine, init_db
 from app.customers.routes import router as customers_router
 from app.estimates.routes import router as estimates_router
 from app.inspections.routes import router as inspections_router
+from app.inventory.routes import router as inventory_router
 from app.labor.routes import router as labor_router
 from app.notifications.routes import router as notifications_router
 from app.part_requests.routes import router as part_requests_router
+from app.parts.routes import router as parts_router
 from app.qc.routes import router as qc_router
 from app.repair_orders.routes import router as repair_orders_router
 from app.service_requests.routes import router as service_requests_router
@@ -119,6 +121,13 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         part_requests_router, prefix=f"{api_prefix}/part_requests", tags=["part_requests"],
+        dependencies=staff_only,
+    )
+    app.include_router(
+        parts_router, prefix=f"{api_prefix}/parts", tags=["parts"], dependencies=staff_only
+    )
+    app.include_router(
+        inventory_router, prefix=f"{api_prefix}/inventory", tags=["inventory"],
         dependencies=staff_only,
     )
     app.include_router(

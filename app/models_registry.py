@@ -17,9 +17,11 @@ from app.checkins import models as checkin_models
 from app.customers import models as customer_models
 from app.estimates import models as estimate_models
 from app.inspections import models as inspection_models
+from app.inventory import models as inventory_models
 from app.labor import models as labor_models
 from app.notifications import models as notification_models
 from app.part_requests import models as part_request_models
+from app.parts import models as part_models
 from app.qc import models as qc_models
 from app.repair_orders import models as repair_order_models
 from app.service_requests import models as service_request_models
@@ -33,8 +35,10 @@ __all__ = [
     "customer_models",
     "estimate_models",
     "inspection_models",
+    "inventory_models",
     "labor_models",
     "notification_models",
+    "part_models",
     "part_request_models",
     "qc_models",
     "repair_order_models",
