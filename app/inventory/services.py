@@ -38,9 +38,7 @@ from app.parts.models import Part, PartStatus
 
 logger = logging.getLogger("autofix.inventory.services")
 
-# Two decimal places is the precision the NUMERIC columns keep, so quantities
-# are rounded before they are compared or stored. Otherwise 0.1 + 0.2 would
-# leave a balance of 0.30000000000000004 that disagrees with its own ledger.
+# Round quantities to the NUMERIC column precision before comparing or storing them.
 QUANTITY_PRECISION = 2
 
 
@@ -151,7 +149,7 @@ class InventoryService:
         if not include_discontinued:
             stmt = stmt.where(Part.status == PartStatus.ACTIVE.value)
 
-        # Most urgent first: nothing on the shelf, then furthest below the line.
+        # Prioritize zero stock, then the largest shortages.
         stmt = stmt.order_by(Part.quantity_on_hand.asc(), Part.name.asc())
         parts = list((await self.db.execute(stmt)).scalars().all())
 
@@ -169,9 +167,7 @@ class InventoryService:
                     location=part.location,
                     quantity_on_hand=on_hand,
                     reorder_level=reorder,
-                    # How much would be needed to get back above the line. A part
-                    # with no reorder level set is short by nothing: it has not
-                    # been flagged for reordering at all.
+                    # A missing reorder level means no shortage is configured.
                     shortage=_round(max(reorder - on_hand, 0.0)),
                     stock_status=part.stock_status,
                 )
@@ -298,10 +294,7 @@ class InventoryService:
                 f"{part.part_number}: only {before} on hand. Stock cannot go negative"
             )
 
-        # A receipt's unit cost is what that stock actually cost, captured on the
-        # row. It defaults to today's catalog cost so a simple delivery does not
-        # have to repeat the price, but it never changes the catalog: re-pricing
-        # is a catalog decision, not a side effect of a booking-in.
+        # Snapshot the receipt cost on the ledger row; this must not reprice the catalog.
         unit_cost = (
             _round(data.unit_cost)
             if data.unit_cost is not None
