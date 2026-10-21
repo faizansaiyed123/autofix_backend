@@ -19,24 +19,18 @@ from pydantic import Field
 
 from app.common.schemas import BaseSchema
 
-# Bucket sizes for a report's time series. DAY is only used for a short window:
-# a daily point per day across five years is a thousand buckets of mostly zeroes,
-# which is noise with a query plan attached.
+# Use daily buckets for short report windows and monthly buckets for longer ranges.
 GRANULARITY_DAY = "DAY"
 GRANULARITY_MONTH = "MONTH"
 GRANULARITY_VALUES: tuple[str, ...] = (GRANULARITY_DAY, GRANULARITY_MONTH)
 
-# The longest window still charted by day. 62 days covers two months of trading
-# at daily resolution; past that the series switches to months on its own.
+# Switch to monthly buckets for ranges longer than 62 days.
 MAX_DAY_GRANULARITY_DAYS = 62
 
-# The window a report covers when the caller names no dates. Thirty days is the
-# period a garage actually reviews; "all time" is never the question anybody asks
-# and is unbounded on an append-only ledger.
+# Default reports to the last 30 days when no dates are supplied.
 DEFAULT_REPORT_DAYS = 30
 
-# Ceiling on the "top N" lists. These are for a screen, not for an export, and a
-# list of four thousand parts is not a report of what moved, it is a table dump.
+# Keep top-N report lists bounded for dashboard use.
 DEFAULT_TOP_LIMIT = 10
 MAX_TOP_LIMIT = 50
 
