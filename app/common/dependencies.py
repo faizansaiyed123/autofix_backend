@@ -67,9 +67,7 @@ async def get_portal_customer(
     )
     customer = result.scalar_one_or_none()
     if not customer:
-        # A signed-in user with no customer record has no portal. This is a 404
-        # rather than a 403 because there is nothing here they are forbidden from
-        # seeing — there is nothing here at all.
+        # Return 404 when no customer record exists, avoiding account ownership disclosure.
         raise NotFoundError("This account has no customer record attached to it")
     return customer
 
