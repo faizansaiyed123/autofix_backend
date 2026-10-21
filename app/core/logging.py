@@ -40,7 +40,6 @@ def configure_logging(env: str = "development") -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # Remove existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
@@ -58,7 +57,6 @@ def configure_logging(env: str = "development") -> None:
         )
         root_logger.addHandler(handler)
 
-    # Set third-party loggers to WARNING to reduce noise
     logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
