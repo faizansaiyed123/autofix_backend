@@ -89,17 +89,14 @@ class CheckInService:
         from app.customers.models import Customer
         from app.vehicles.models import Vehicle
 
-        # Validate customer exists
         result = await self.db.execute(select(Customer).where(Customer.id == str(checkin_data.customer_id)))
         if not result.scalar_one_or_none():
             raise ConflictError(f"Customer with id {checkin_data.customer_id} not found")
 
-        # Validate vehicle exists
         result = await self.db.execute(select(Vehicle).where(Vehicle.id == str(checkin_data.vehicle_id)))
         if not result.scalar_one_or_none():
             raise ConflictError(f"Vehicle with id {checkin_data.vehicle_id} not found")
 
-        # Validate service advisor exists if provided
         if checkin_data.service_advisor_id:
             from app.auth.models import User
 
