@@ -121,26 +121,19 @@ class UserService:
 
         update_data = user_data.model_dump(exclude_unset=True)
 
-        # Handle roles separately
         roles = update_data.pop("roles", None)
 
         if "password" in update_data:
             update_data["password_hash"] = hash_password(update_data.pop("password"))
 
-        # `exclude_unset` already narrowed this to the fields the caller actually
-        # sent, so every key here is a deliberate change -- including an explicit
-        # null, which is how a nullable field like `phone` gets cleared. Testing
-        # `value is not None` here would collapse "cleared it" back into "left it
-        # alone" and make those fields impossible to empty from the UI.
+        # exclude_unset preserves explicit nulls so nullable fields such as phone can be cleared.
         for field, value in update_data.items():
             setattr(user, field, value)
 
         if roles is not None:
-            # Remove existing roles
             await self.db.execute(
                 UserRole.__table__.delete().where(UserRole.user_id == user.id)
             )
-            # Add new roles
             for role_name in roles:
                 await self.auth_service.assign_role(user, role_name)
 
