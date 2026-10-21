@@ -127,21 +127,15 @@ class InventoryTransaction(TimestampedBase):
     )
     transaction_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
 
-    # Signed: negative removes stock. `quantity_before` / `quantity_after` are
-    # copied in at write time so a single row explains the movement on its own,
-    # even if the balance is later rebuilt from scratch.
+    # Negative quantities remove stock; before/after balances preserve movement history.
     quantity: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     quantity_before: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     quantity_after: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
 
-    # What this movement was worth, captured at the time. The catalog's
-    # unit_cost is today's price and may have moved since, so receipts keep
-    # their own figure and the ledger can be valued as it actually was.
+    # Snapshot movement cost so future catalog price changes do not rewrite history.
     unit_cost: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=True)
 
-    # What the movement was for: the repair order that consumed the part, a
-    # purchase order number, a stock take reference. Kept as a free-text
-    # reference so the ledger is not coupled to every future document type.
+    # Use a free-text reference to link ledger entries to different document types.
     repair_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("repair_orders.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -153,8 +147,7 @@ class InventoryTransaction(TimestampedBase):
 
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Bin movement: a TRANSFER out names the destination, a TRANSFER in names
-    # the source, so the two legs of a move can be tied together.
+    # Transfer-out records the destination; transfer-in records the source.
     from_location: Mapped[str | None] = mapped_column(String(50), nullable=True)
     to_location: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
