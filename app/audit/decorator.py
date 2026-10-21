@@ -39,14 +39,10 @@ from app.core.database import AsyncSession, get_session
 
 logger = logging.getLogger("autofix.audit.decorator")
 
-# Route handlers take a path parameter whose name ends in `_id`; that is how the
-# decorator finds the row it is about. A create route has no such parameter,
-# which is how it knows there is no "before" to read.
+# Find the affected row from the route's `_id` parameter; create routes have none.
 _ID_PARAM_SUFFIX = "_id"
 
-# Plain-language verbs for the one-line summary. A summary built by string-munging
-# the enum produces "Create d a customer"; a table produces something a person
-# can read at a glance, and this is the only place the two vocabularies meet.
+# Keep audit summaries readable instead of deriving verbs from enum names.
 _VERBS: dict[AuditAction, str] = {
     AuditAction.CREATE: "Created",
     AuditAction.UPDATE: "Updated",
@@ -124,9 +120,7 @@ def _build_wrapper(
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         session: AsyncSession | None = kwargs.get("session")
         if session is None:
-            # Raising is correct: a route wired to the decorator without a
-            # session is a wiring mistake, and quietly not auditing it would
-            # hide the mistake permanently.
+            # A missing session is a route configuration error; don't skip the audit.
             raise RuntimeError(
                 "@audit requires the route to declare a `session` parameter"
             )
@@ -135,27 +129,20 @@ def _build_wrapper(
 
         service = AuditService(session)
         entity_id = kwargs.get(target_param) if target_param else None
-        # Read the "before" state first. A delete has no other chance to see what
-        # it deleted, and taking it after the handler runs would snapshot the
-        # change instead of the thing that changed.
+        # Capture the current state before the handler mutates or deletes the row.
         before_state = (
             await service.snapshot_entity(entity_type, entity_id)
             if target_param and entity_id is not None
             else None
         )
 
-        # The injected parameters are for the decorator, not the handler. Handing
-        # them on would be a TypeError on every route that did not declare them,
-        # which is to say on every route this decorator is actually for.
+        # Don't pass decorator-only parameters to handlers that don't declare them.
         result = await handler(*args, **{k: v for k, v in kwargs.items() if k not in injected})
 
         after_state = _state_from_result(result)
         if target_param and entity_id is not None and not _is_entity_response(after_state):
-            # Either the handler returned nothing (a 204, and the row may well
-            # still exist: several "deletes" here are soft deletes that flip a
-            # status), or it returned something that is not the record itself —
-            # a decision result, a wrapper, a message. In both cases the database
-            # is the authority on what the row now holds, so ask it.
+            # Some handlers return 204s, soft-delete results, or other non-entity values.
+            # Read the row back to capture its actual state.
             after_state = await service.snapshot_entity(entity_type, entity_id)
         resolved_id = _resolve_entity_id(entity_id, after_state)
         entry = await service.record_change(
