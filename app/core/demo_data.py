@@ -149,15 +149,8 @@ PARTS: list[tuple[str, str, str, float, float, int, int, str]] = [
     ("COOL-COOL-2200", "Long-life coolant, 1 gallon", "FLUIDS", 18.00, 39.00, 11, 6, "Peak"),
 ]
 
-# Stock consumed by the repair orders seeded below: (part_number, order_index,
-# quantity, reason). ``order_index`` is the position of the order in
-# ``_seed_repair_orders`` — 0 delivered brakes, 3 the stale battery-and-brakes job,
-# 4 the half-settled service. Parts are *fitted* to work, so the ledger says which
-# order took them; a demo catalog where every unit appeared out of nowhere would
-# make the shop look like it conjures brake pads.
-#
-# The opening receipt in ``_seed_inventory_ledger`` carries these quantities too,
-# so a part's closing balance is the figure above and its history is real.
+# Stock issued by seeded repair orders: (part_number, order_index, quantity, reason).
+# order_index refers to _seed_repair_orders; the opening receipt balances the ledger.
 ISSUES: list[tuple[str, int, float, str]] = [
     ("BRK-PAD-1042", 0, 1.0, "Fitted on the front brake job."),
     ("FLT-OIL-3310", 4, 1.0, "Fitted on the oil and filter change."),
@@ -730,10 +723,7 @@ async def _seed_estimates(
             ],
         },
         {
-            # The portal customer's open question. Sent yesterday, nothing decided,
-            # which is the exact state `open_only` exists to list — signing in as
-            # customer@autofix.demo and finding an estimate with no decision on it
-            # would leave the portal's main screen empty.
+            # Keep one sent estimate undecided so the portal's open-only list has a result.
             "number": "EST-2026-0004",
             "customer": 0,
             "vehicle": 1,
@@ -928,10 +918,7 @@ async def _seed_repair_orders(
     )
     created.append(not_started)
 
-    # An old, completed order that has not been paid for. The invoice that is
-    # overdue is *this* work: an overdue bill attached to somebody else's
-    # delivered repair would be a demo dataset nobody believes, and the chase
-    # list is the most realistic thing a garage has.
+    # A completed repair order with an unpaid, overdue invoice for the chase-list demo.
     stale = RepairOrder(
         ro_number="RO-2025-0142",
         customer_id=customers[5].id,
@@ -1016,12 +1003,7 @@ async def _seed_repair_orders(
         )
     created.append(half_settled)
 
-    # A small job on the portal customer's other car, billed and not yet paid.
-    # Without it the demo account has one invoice and it is settled, so signing in
-    # as them shows no outstanding balance and the chase list on their account is
-    # empty. No estimate is attached: small jobs skip the estimate, and inventing
-    # one would contradict the rule that an order is only raised against approved
-    # work — this work was agreed at the counter.
+    # Unpaid invoice for the portal customer's second vehicle; this job has no estimate because work was agreed at the counter.
     small_job = RepairOrder(
         ro_number="RO-2026-0005",
         customer_id=customers[0].id,
@@ -1059,10 +1041,7 @@ async def _seed_repair_orders(
         )
     created.append(small_job)
 
-    # The customer's second visit, settled. Retention is measured on settled bills,
-    # and a demo shop where exactly one person has ever paid a bill reports a zero
-    # repeat rate — which is precisely the "healthy shop full of one-timers" the
-    # report is built to contradict.
+    # A second settled invoice for this customer makes retention metrics non-zero.
     repeat_visit = RepairOrder(
         ro_number="RO-2026-0006",
         customer_id=customers[1].id,
@@ -1102,10 +1081,7 @@ async def _seed_repair_orders(
         )
     created.append(repeat_visit)
 
-    # The same customer a year earlier, which is what makes the retention report
-    # say something. "Retained" means settled more than one bill *ever*, and the
-    # case it exists to find is the customer who came back after a long gap — so
-    # the earlier visit has to be a paid bill well outside any 30-day window.
+    # An earlier settled invoice outside the 30-day window supports lifetime retention metrics.
     last_winter = RepairOrder(
         ro_number="RO-2025-0318",
         customer_id=customers[1].id,
@@ -1250,11 +1226,7 @@ async def _seed_notifications(
 
     plans: list[NotificationEvent] = []
 
-    # Every invoice that was actually sent tells its customer so — the same rule
-    # the invoice service applies when it issues one. Applied from the data rather
-    # than written out notice by notice, so the demo cannot fall out of step with
-    # the product: a bill that is issued without a notice, or a notice for a draft,
-    # is the sort of thing that only shows up when somebody reads the data.
+    # Notify customers for issued invoices only, matching the invoice service.
     for invoice in invoices:
         if invoice.issued_at is None:
             continue
@@ -1266,9 +1238,7 @@ async def _seed_notifications(
             )
         )
 
-    # The appointment requests that are still open. A submitted request is
-    # acknowledged, which is also the demo customer's unread notice: the portal
-    # account has a live conversation with the shop rather than a closed one.
+    # Acknowledge appointment requests that are still awaiting staff review.
     for appointment in appointments:
         if appointment.status != AppointmentStatus.REQUESTED.value:
             continue
@@ -1304,8 +1274,7 @@ async def _seed_notifications(
             )
         )
 
-    # The chase list: the oldest unpaid bill. Picked as the one past its due date,
-    # which is the definition the reports use, rather than by list position.
+    # Select the oldest issued, unpaid invoice past its due date for the chase alert.
     today = date.today()
     overdue = next(
         (
@@ -1335,8 +1304,7 @@ async def _seed_notifications(
             )
         )
 
-    # Stock at or below its reorder point, one notice per part — which is what the
-    # dedupe key buys: a nightly low-stock sweep must not stack them.
+    # Create one low-stock notice per part; the dedupe key prevents repeats.
     if parts_staff is not None:
         for number, name, _, _, _, on_hand, reorder_level, _ in PARTS:
             part = parts[number]
@@ -1368,13 +1336,9 @@ async def _seed_notifications(
         addressed = event.normalised()
         recipient = addressed.recipient_id or logins.get(addressed.customer_id)
         if recipient is None:
-            # Nobody to address it to: dropped quietly rather than failing the
-            # seed, which is how the delivery service treats a customer with no
-            # account. Four of the six demo customers are in exactly that state.
+            # Skip events whose customer has no linked user account.
             continue
-        # A bill they have already settled has plainly been opened; everything
-        # still waiting on somebody is unread, which is what puts a number on the
-        # badge in the demo.
+        # Mark settled invoice notifications as read; leave other notices unread.
         settled = addressed.entity_id in settled_ids
         notification = Notification(
             recipient_id=recipient,
@@ -1406,9 +1370,7 @@ async def _seed_labor(
     """
     technician = users.get(DEMO_TECH_EMAIL)
     for order in orders:
-        # Flushed before the query on purpose: sessions here do not autoflush, and
-        # the tasks added for the last order would otherwise be invisible to the
-        # select that is supposed to be counting them.
+        # Flush before querying because this session has autoflush disabled.
         await session.flush()
         result = await session.execute(
             select(RepairTask).where(RepairTask.repair_order_id == order.id)
