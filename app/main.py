@@ -70,21 +70,9 @@ def create_app() -> FastAPI:
     async def health_check():
         return {"status": "healthy", "app": "AutoFix"}
 
-    # The shop's own endpoints are shop-wide: `GET /invoices/` is the invoice
-    # book, `GET /vehicles/` is every vehicle on the premises. They are mounted
-    # behind the staff gate rather than left to their permissions alone, because a
-    # customer legitimately holds several of those permissions for the portal and
-    # a permission says nothing about whose rows the caller may read.
-    #
-    # Three routers are deliberately outside the gate, and each is scoped to the
-    # signed-in user rather than to the shop: auth (it is how a caller becomes
-    # anybody at all), the portal (the customer's own account, one row set), and
-    # notifications (each query filters on `current_user.id`, so a customer sees
-    # their own badge and nobody else's).
-    # Called, not merely referenced: `require_staff` builds the dependency, the
-    # same way `require_permission(...)` does at a route. Handing FastAPI the
-    # factory instead would type-check, return a function nobody calls, and leave
-    # the gate open — a guard that looks fitted and does nothing.
+    # Shop-wide routers are staff-only; permissions alone do not scope records to their owner.
+    # Auth, portal, and notifications remain outside this gate and enforce user-level scope.
+    # Pass require_staff() so FastAPI receives a dependency, not the factory itself.
     staff_only = [Depends(require_staff())]
 
     app.include_router(auth_router, prefix=f"{api_prefix}/auth", tags=["auth"])
