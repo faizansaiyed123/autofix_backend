@@ -55,9 +55,7 @@ from app.core.database import TimestampedBase
 
 CENTS = 2
 
-# The shop's default terms. A bill with no agreed date is still owed on a
-# schedule, and "net 30" is what a garage invoice means when nobody wrote
-# anything else down.
+# Default payment terms when no due date is configured.
 DEFAULT_PAYMENT_TERM_DAYS = 30
 
 
@@ -103,10 +101,7 @@ INVOICE_STATUS_VALUES: tuple[str, ...] = tuple(s.value for s in InvoiceStatus)
 INVOICE_ITEM_TYPE_VALUES: tuple[str, ...] = tuple(s.value for s in InvoiceItemType)
 INVOICE_ITEM_SOURCE_VALUES: tuple[str, ...] = tuple(s.value for s in InvoiceItemSource)
 
-# Statuses that will accept no further money and can never be reopened. VOID is
-# the only one: a PAID invoice can go back to owing money, but only because a
-# payment against it was reversed — that is a fact about the money, not an edit to
-# the document the customer is holding.
+# VOID is permanently closed; PAID can return to an owing state only through payment reversal.
 TERMINAL_INVOICE_STATUSES: frozenset[str] = frozenset({InvoiceStatus.VOID.value})
 
 # Statuses in which a customer still owes money.
@@ -131,10 +126,7 @@ INVOICE_STATUS_TRANSITIONS: dict[str, list[str]] = {
     InvoiceStatus.DRAFT.value: [
         InvoiceStatus.ISSUED.value,
     ],
-    # Money arriving moves an issued invoice through the payment states. The
-    # backwards steps are reachable only by reversing a payment, never by a
-    # caller naming a status: money that turns out to have been taken in error
-    # has to put the balance back.
+    # Payment operations drive invoice-state changes; clients cannot set payment statuses directly.
     InvoiceStatus.ISSUED.value: [
         InvoiceStatus.PARTIALLY_PAID.value,
         InvoiceStatus.PAID.value,
