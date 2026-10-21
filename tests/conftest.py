@@ -17,17 +17,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# Add backend to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # --- Test environment -------------------------------------------------------
-# These must be set BEFORE app.core.config is imported, since Settings reads
-# the environment at import time.
-#
-# * A dedicated test database keeps the developer's working data safe, since
-#   the suite drops every table on teardown.
-# * bcrypt cost is dropped to the minimum: the suite re-seeds demo users
-#   between tests, and cost-12 hashing dominated the total runtime.
+# Set these before importing config: tests use a dedicated database, drop its tables, and lower bcrypt cost for speed.
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+asyncpg://autofix:autofix@localhost:5432/autofix_test",
@@ -41,7 +34,6 @@ from app.core.database import Base, get_session
 from app.core.seed import seed_all
 from app.main import app
 
-# Create a test-specific async engine (created within session fixture scope)
 _test_engine = None
 TestSessionFactory = None
 
@@ -105,19 +97,10 @@ async def setup_test_db():
         autocommit=False,
     )
 
-    # Create all tables
     async with _test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Clear anything an earlier run left behind, before seeding.
-    #
-    # `create_all` is a no-op on tables that already exist, so a suite killed
-    # half way through -- or a developer who pointed `scripts/seed.py` at the test
-    # database -- would otherwise start from the last run's leftovers. That is
-    # not a theoretical problem: the demo seed is idempotent by design, so a
-    # surviving customer row makes it report "already present" and skip, and the
-    # seed tests fail on an assertion about rows that were never written. Each
-    # test cleans up after itself, but a run that was interrupted cannot.
+    # Clear leftovers from interrupted runs before seeding; create_all does not reset existing tables.
     async with TestSessionFactory() as session:
         for table in _CLEAN_TABLES:
             await session.execute(text(f"DELETE FROM {table} CASCADE"))
@@ -129,8 +112,7 @@ async def setup_test_db():
 
     yield
 
-    # Cleanup. Table order is resolved from the foreign keys, so
-    # inspection_photos is dropped before inspection_items without help.
+    # Drop tables in foreign-key order.
     async with _test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await _test_engine.dispose()
