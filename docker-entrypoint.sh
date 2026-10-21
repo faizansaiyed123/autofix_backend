@@ -1,21 +1,10 @@
 #!/bin/sh
-#
-# Container entrypoint: bring the schema up to date, optionally seed, then serve.
-#
-# Migrations run here rather than in a documented manual step because a container
-# that starts successfully against an empty database and then 500s on the first
-# query is the worst of both outcomes: it looks healthy to an orchestrator and it
-# is not. `alembic upgrade head` is idempotent, so this is safe to repeat.
-#
-# Anything that exits non-zero stops the container, which is the behaviour a
-# deployment needs: a failed migration should be a loud dead pod, not a running
-# process serving an out-of-date schema.
+# Bring the schema up to date, optionally seed demo data, then start the server.
+# A failed migration exits before the application can serve requests.
 set -e
 
 echo "==> Waiting for the database"
-# Postgres accepts connections a moment before it finishes its own startup, so
-# the first attempt is expected to fail. Retrying here is simpler and more
-# honest than asking the application to handle a dead database on every request.
+# Retry while PostgreSQL completes startup.
 python - <<'PY'
 import asyncio
 import sys
@@ -46,9 +35,7 @@ PY
 echo "==> Applying migrations"
 alembic upgrade head
 
-# Off by default. A demo shop in production is worse than an empty one, so the
-# flag has to be asked for explicitly; `--no-demo` gives logins without the
-# business data for a first run that wants only the five accounts.
+# Demo data is opt-in; leave it disabled for deployments with real customer data.
 if [ "${AUTOFIX_SEED:-0}" = "1" ]; then
     echo "==> Seeding roles, logins and demo data"
     python scripts/seed.py
