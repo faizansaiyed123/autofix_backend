@@ -46,10 +46,7 @@ class NotificationService:
         """
         event = event.normalised()
         if event.recipient_id is None and event.customer_id is not None:
-            # Addressed to a customer rather than a login: resolve it now. Most
-            # walk-in customers never create an account, and "no account" is not a
-            # failure — it just means there is nobody to deliver to, so the event
-            # is dropped quietly and the caller's operation carries on.
+            # Resolve customer-addressed events to a login; skip delivery when no account exists.
             event = await self._address_to_customer(event)
         if event is None or event.recipient_id is None:
             if event is not None:
@@ -372,8 +369,7 @@ def estimate_ready_event(
         body="Review each line and approve or decline the work you want done.",
         entity_type="estimate",
         entity_id=estimate_id,
-        # Keyed on the estimate, so re-sending the same estimate to the same
-        # customer does not stack a second "ready" on top of the first.
+        # Deduplicate repeated sends for the same estimate and customer.
         dedupe_key=f"estimate_ready:{estimate_id}",
     )
 
