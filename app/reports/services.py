@@ -85,9 +85,7 @@ from app.reports.schemas import (
 
 logger = logging.getLogger("autofix.reports.services")
 
-# Invoice statuses that represent money the shop actually asked for. A DRAFT has
-# not been sent and a VOID has been written off; neither is revenue, and counting
-# them is the single easiest way to make a report wrong in the owner's favour.
+# Only issued and paid invoices count as billed revenue; drafts and voids do not.
 INVOICED_STATUSES: frozenset[str] = frozenset(
     {
         InvoiceStatus.ISSUED.value,
