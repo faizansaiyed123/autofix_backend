@@ -85,7 +85,6 @@ async def seed_role_permissions(
     perms_by_name: dict[str, Permission],
 ) -> None:
     """Create role-permission mappings."""
-    # Check existing mappings
     existing_stmt = select(RolePermission)
     existing_result = await session.execute(existing_stmt)
     existing_count = len(existing_result.fetchall())
@@ -113,7 +112,6 @@ async def seed_users(
     users: list[User] = []
 
     for email, first_name, last_name, password, role_enum in DEMO_USERS:
-        # Check if user already exists
         existing = await session.execute(
             select(User).where(User.email == email)
         )
@@ -132,7 +130,6 @@ async def seed_users(
         session.add(user)
         await session.flush()
 
-        # Assign role
         role = roles_by_name[role_enum.value]
         ur = UserRole(user_id=user.id, role_id=role.id)
         session.add(ur)
