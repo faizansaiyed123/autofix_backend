@@ -22,7 +22,6 @@ from app.core.config import settings
 
 logger = logging.getLogger("autofix.database")
 
-# Async engine - echo only in development
 _engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.APP_DEBUG,
@@ -31,7 +30,6 @@ _engine = create_async_engine(
     max_overflow=30,
 )
 
-# Session factory
 AsyncSessionFactory = async_sessionmaker[
     AsyncSession
 ](
