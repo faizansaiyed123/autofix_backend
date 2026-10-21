@@ -18,7 +18,6 @@ logger = logging.getLogger("autofix.security")
 
 _BCRYPT_ROUNDS = settings.BCRYPT_ROUNDS
 
-# Re-export for convenience
 ACCESS_TOKEN_EXPIRE_MINUTES: int = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS: int = settings.REFRESH_TOKEN_EXPIRE_DAYS
 JWT_ALGORITHM: str = settings.JWT_ALGORITHM
