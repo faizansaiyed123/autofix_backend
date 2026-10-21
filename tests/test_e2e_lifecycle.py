@@ -195,10 +195,7 @@ async def run_the_whole_visit(
         if observe is not None:
             await observe(name, facts)
 
-    # 1. The customer asks for work, from their own account. No customer id in
-    #    the body: the portal derives it from the token, which is the whole reason
-    #    a customer can use this endpoint without being able to file against
-    #    somebody else's car.
+# 1. Customer submits a service request through their own portal account (no customer ID supplied).
     request = await _ok(
         await customer.post(
             f"{PORTAL_URL}/service-requests",
@@ -214,9 +211,7 @@ async def run_the_whole_visit(
     facts["request"] = request
     await stage("requested")
 
-    # 2. The shop registers the car. Customers hold no vehicles:write, and that is
-    #    correct -- who owns which car is the shop's record, not the customer's to
-    #    assert.
+# 2. Staff registers the vehicle; customers cannot create vehicles.
     vehicle = await _ok(
         await advisor.post(
             VEHICLES_URL,
@@ -234,8 +229,7 @@ async def run_the_whole_visit(
         ),
         201,
     )
-    # 3. ...and attaches it to the request, which is how the diary later knows
-    #    which car the booking is for without asking the customer again.
+# 3. Attach the vehicle to the request.
     facts["vehicle"] = vehicle
     facts["request"] = await _ok(
         await advisor.patch(
@@ -243,8 +237,7 @@ async def run_the_whole_visit(
         )
     )
 
-    # 4. The advisor takes the request off the pile and approves it. Two steps,
-    #    because the state machine says an untriaged request is not a booking.
+# 4. Advisor approves the request before converting it to a booking.
     for status_name in ("IN_REVIEW", "APPROVED"):
         facts["request"] = await _ok(
             await advisor.patch(
@@ -253,10 +246,7 @@ async def run_the_whole_visit(
         )
     await stage("approved")
 
-    # 5. The approved request becomes a booking. This is the conversion that
-    #    closes the intake loop: one transaction writes the appointment and marks
-    #    the request CONVERTED, so a clashing slot cannot leave a request marked
-    #    converted with nothing on the calendar.
+# 5. Convert the approved request to an appointment in one transaction.
     appointment = await _ok(
         await advisor.post(
             f"{APPOINTMENTS_URL}from-service-request/{request['id']}",
@@ -278,8 +268,7 @@ async def run_the_whole_visit(
     assert facts["request"]["status"] == "CONVERTED"
     await stage("booked")
 
-    # 6. The car arrives. Checked in against the booking, with the odometer read
-    #    off the car rather than copied from the customer record.
+# 6. Check in the vehicle and record its odometer.
     checkin = await _ok(
         await advisor.post(
             CHECK_INS_URL,
@@ -303,9 +292,7 @@ async def run_the_whole_visit(
     )
     await stage("checked_in")
 
-    # 7. The digital inspection. One item is a photo, which is also what makes the
-    #    QC documentation check pass later -- the photographs taken here are the
-    #    photographs QC looks for.
+# 7. Add inspection findings and a photo for QC documentation.
     inspection = await _ok(
         await technician.post(
             INSPECTIONS_URL,
@@ -354,8 +341,7 @@ async def run_the_whole_visit(
     facts["inspection"] = inspection
     await stage("inspected")
 
-    # 8. The estimate is written against the inspection and the request, so the
-    #    quote is traceable back to the two things that prompted it.
+# 8. Link the estimate to the inspection and service request.
     estimate = await _ok(
         await advisor.post(
             ESTIMATES_URL,
@@ -399,19 +385,14 @@ async def run_the_whole_visit(
     assert estimate["total"] == QUOTED_TOTAL
     facts["estimate"] = estimate
 
-    # 9. Sent. This is the moment the customer is asked to do something, so it is
-    #    the moment they are told: the notice is written with the same save that
-    #    commits the status, and cannot outlive an estimate that rolled back.
+# 9. Send the estimate and queue its notification with the status change.
     estimate = await _ok(await advisor.post(f"{ESTIMATES_URL}{estimate['id']}/send"))
     assert estimate["status"] == "SENT"
     assert estimate["sent_at"] is not None
     facts["estimate"] = estimate
     await stage("sent")
 
-    # 10. The customer decides, line by line, from their own account. Decisions
-    #     are per line so that approving the safety work does not force approving
-    #     the advisory extra -- which is the behaviour the estimate's own status
-    #     machine reports as PARTIALLY_APPROVED while lines are outstanding.
+# 10. Customer decisions are per estimate line, including partial approval.
     lines = {item["description"]: item for item in estimate["items"]}
     decision_path = f"{PORTAL_URL}/estimates/{estimate['id']}/items"
     safety = await _ok(
@@ -447,10 +428,7 @@ async def run_the_whole_visit(
     assert facts["estimate"]["approved_total"] == BILLED_TOTAL
     await stage("decided")
 
-    # 11. The repair order, raised from the accepted estimate with no task list of
-    #     its own: the breakdown is generated from the approved lines, so a task
-    #     exists for the work that was agreed and none for the line that was
-    #     declined.
+# 11. Create a repair order from approved lines only.
     order = await _ok(
         await advisor.post(
             RO_URL,
@@ -474,7 +452,7 @@ async def run_the_whole_visit(
     ]
     facts["order"] = order
 
-    # 12. Approved and started. The advisor authorises; the technician moves it.
+# 12. Authorize and start the repair order.
     for status_name in ("APPROVED", "IN_PROGRESS"):
         order = await _ok(
             await technician.patch(
@@ -486,9 +464,7 @@ async def run_the_whole_visit(
     facts["order"] = order
     await stage("started")
 
-    # 13. Labour, while the order is still live -- the service refuses labour on a
-    #     finished order, which is the rule that keeps the invoice matching work
-    #     that actually happened.
+# 13. Record labour while the repair order is active.
     labour = await _ok(
         await technician.post(
             LABOR_URL,
@@ -508,8 +484,7 @@ async def run_the_whole_visit(
     facts["labour"] = labour
     await stage("labour")
 
-    # 14. The part is requested by the technician who needs it, and decided by
-    #     somebody else: the technician who raised a request cannot approve it.
+# 14. A technician requests a part; a different user must approve it.
     part_request = await _ok(
         await technician.post(
             PART_REQUESTS_URL,
@@ -541,8 +516,7 @@ async def run_the_whole_visit(
     assert facts["part_request"]["status"] == "FULFILLED"
     await stage("part_staged")
 
-    # 15. Tasks done, then the order. The order cannot be completed while a task
-    #     is open, so this is two steps rather than one.
+# 15. Complete the tasks before completing the repair order.
     for task in order["tasks"]:
         await _ok(
             await technician.patch(
@@ -558,10 +532,7 @@ async def run_the_whole_visit(
     assert facts["order"]["completed_at"] is not None
     await stage("completed")
 
-    # 16. Quality control, by somebody who did not do the work. The technician's
-    #     own attempt is refused first, on purpose: an end-to-end test that only
-    #     ever took the happy path would pass against a build where the
-    #     independence rule had quietly been deleted.
+# 16. Verify quality control requires an independent inspector.
     refused = await technician.post(QC_URL, json={"repair_order_id": order["id"]})
     assert refused.status_code == 400
     assert "cannot run quality control" in refused.json()["detail"]
@@ -588,8 +559,7 @@ async def run_the_whole_visit(
     assert facts["order"]["status"] == "QC_PASSED"
     await stage("qc_passed")
 
-    # 17. The bill. The approved estimate lines are copied on automatically and
-    #     frozen; the declined line is not a debt, so it is not on it.
+# 17. Create the invoice from approved estimate lines.
     invoice = await _ok(
         await advisor.post(
             INVOICES_URL,
@@ -610,16 +580,14 @@ async def run_the_whole_visit(
     facts["invoice"] = invoice
     await stage("invoiced")
 
-    # 18. Issued, which is the point the balance becomes owed and the lines stop
-    #     being editable: the customer now holds the document.
+# 18. Issue the invoice, locking its lines and making the balance due.
     invoice = await _ok(await advisor.post(f"{INVOICES_URL}{invoice['id']}/issue"))
     assert invoice["status"] == "ISSUED"
     assert invoice["issued_at"] is not None
     facts["invoice"] = invoice
     await stage("issued")
 
-    # 19. Money in, to the cent. An invoice reaches PAID only through a recorded
-    #     payment, so this is the only way the last state in the chain is reached.
+# 19. Record the payment that settles the invoice.
     payment = await _ok(
         await advisor.post(
             PAYMENTS_URL,
@@ -687,8 +655,7 @@ class TestFullLifecycle:
         assert summary["vehicle_count"] == 1
         assert summary["awaiting_approval"] == 0
         assert summary["awaiting_payment"] == 0
-        # Settled in full, so nothing is owed -- and the order is finished and
-        # inspected, which is the one thing still waiting on the customer.
+# The invoice is fully paid; the order is complete and inspected.
         assert summary["open_balance"] == 0.0
         assert summary["overdue_balance"] == 0.0
         assert summary["ready_for_pickup"] == 1
@@ -698,8 +665,7 @@ class TestFullLifecycle:
         )
         assert customer_estimate["status"] == "APPROVED"
         assert customer_estimate["approved_total"] == BILLED_TOTAL
-        # The declined line is still shown, marked, and no longer decidable: the
-        # customer can see what they said no to rather than finding it vanish.
+# Declined lines remain visible but cannot be changed.
         lines = {line["description"]: line for line in customer_estimate["items"]}
         assert lines["Brake fluid flush"]["status"] == "DECLINED"
         assert lines["Brake fluid flush"]["can_decide"] is False
@@ -720,8 +686,7 @@ class TestFullLifecycle:
         assert history["visit_count"] == 1
         assert len(history["inspections"]) == 1
         assert len(history["service_requests"]) == 1
-        # Spend is counted from settled bills only, so it agrees with the money
-        # the shop says it took.
+# Revenue reports count settled bills only.
         assert history["total_spent"] == BILLED_TOTAL
 
         portal_payments = await _ok(await customer_client.get(f"{PORTAL_URL}/payments"))
@@ -741,14 +706,10 @@ class TestFullLifecycle:
         pointed = {n["entity_type"]: n["entity_id"] for n in inbox["notifications"]}
         assert str(pointed["estimate"]) == estimate["id"]
         assert str(pointed["invoice"]) == invoice["id"]
-        # Both notices are still unread: nothing has quietly marked them read on
-        # the way past.
+# Both notices remain unread.
         assert inbox["unread_count"] == 2
 
-        # -- the audit trail --------------------------------------------------
-        # The audit log is the only thing that survives the people involved, so
-        # the entries have to name the record, the action *and* the actor, or the
-        # trail is a list of timestamps.
+# Audit entries include the record, action, and actor.
         ro_entries = await _ok(
             await owner_client.get(
                 AUDIT_URL, params={"entity_type": "repair_order", "entity_id": order["id"]}
@@ -756,7 +717,7 @@ class TestFullLifecycle:
         )
         actions = Counter(entry["action"] for entry in ro_entries["data"])
         assert actions["CREATE"] == 1
-        # One entry per order status change, plus one per task status change.
+# Expect one audit entry per order and task status change.
         assert actions["STATUS_CHANGE"] == 5
         assert {entry["entity_label"] for entry in ro_entries["data"]} == {order["ro_number"]}
         assert ro_entries["meta"]["total"] == 6
@@ -767,8 +728,7 @@ class TestFullLifecycle:
         estimate_actions = Counter(entry["action"] for entry in estimate_history["entries"])
         assert estimate_actions["CREATE"] == 1
         assert estimate_actions["SEND"] == 1
-        # One entry per line the customer decided on, because each decision is a
-        # separate thing somebody did to the customer's agreement.
+# Each line decision creates a separate audit entry.
         assert estimate_actions["DECIDE"] == 3
         assert estimate_history["entity_label"] == estimate["estimate_number"]
 
@@ -789,9 +749,7 @@ class TestFullLifecycle:
         assert payment_entries["meta"]["total"] == 1
         assert payment_entries["data"][0]["entity_label"] == "AUTH 4471"
 
-        # The customer's own decisions are audited against the actor who made
-        # them, which for a portal decision is the customer -- not the advisor
-        # who happens to be reading the log.
+# Portal decisions are attributed to the customer, not the advisor reading the log.
         customer_decisions = [
             entry
             for entry in estimate_history["entries"]
@@ -801,8 +759,7 @@ class TestFullLifecycle:
             "customer@autofix.demo"
         }
 
-        # The invoice on disk agrees with what was billed, which is the assertion
-        # that would catch a line silently dropped between the two.
+# Invoice lines match the approved estimate lines.
         stored = (
             await db.execute(select(Invoice).where(Invoice.id == str(invoice["id"])))
         ).scalar_one()
@@ -845,16 +802,7 @@ class TestDashboardReflectsTheVisit:
             seen[stage_name] = await _dashboard(manager_client)
             if stage_name != "issued":
                 return
-            # The bill has just gone out, and this is the moment it would still be
-            # chased. The promised payment date is moved into the past here, in
-            # the middle of the visit, because overdue is only observable while
-            # the invoice is still open -- a test that backdated it afterwards
-            # would be asserting against a settled bill, which is not overdue by
-            # definition. Written to the row rather than through the API because a
-            # date on an issued invoice is not the shop's to change once the
-            # customer holds the document; a shop that genuinely had to move one
-            # would void it and raise a new one, and that would be a different
-            # invoice in the log.
+# Backdate the due date while the invoice is open; issued invoice dates cannot be changed through the API.
             issued_row = (
                 await db.execute(
                     select(Invoice).where(Invoice.id == str(facts["invoice"]["id"]))
@@ -874,26 +822,22 @@ class TestDashboardReflectsTheVisit:
             observe=observe,
         )
 
-        # An empty shop on an empty morning: numbers, not errors.
+# Empty-shop baseline for dashboard counts.
         fresh = seen["requested"]
         assert fresh["revenue"]["collected_total"] == 0.0
         assert fresh["work"]["repair_orders_open"] == 0
         assert fresh["operations"]["vehicles_in_shop"] == 0
 
-        # The car is booked in and on the order, so it is in the shop and the
-        # order is open but not yet finished.
+# Vehicle is checked in with an active repair order.
         in_shop = seen["started"]
         assert in_shop["operations"]["vehicles_in_shop"] == 1
         assert in_shop["work"]["repair_orders_open"] == 1
         assert in_shop["work"]["repair_orders_in_progress"] == 1
         assert in_shop["work"]["repair_orders_awaiting_qc"] == 0
-        # Nothing is waiting on the parts department yet.
+# No part requests are waiting yet.
         assert in_shop["work"]["part_requests_pending"] == 0
 
-        # A part request exists and nobody has answered it. This is the queue that
-        # lives in one person's head unless a dashboard counts it, and it is
-        # counted on both the work panel and the operations panel because both
-        # panels are read by the people who have to chase it.
+# Part request awaiting approval.
         waiting_on_parts = seen["part_requested"]
         assert waiting_on_parts["work"]["part_requests_pending"] == 1
         assert waiting_on_parts["operations"]["pending_part_requests"] == 1
@@ -902,8 +846,7 @@ class TestDashboardReflectsTheVisit:
         assert staged["work"]["part_requests_pending"] == 0
         assert staged["operations"]["pending_part_requests"] == 0
 
-        # Work finished, not yet inspected. This is the queue a shop forgets, and
-        # the moment the dashboard exists for.
+# Order completed but not yet inspected.
         waiting = seen["awaiting_qc"]
         assert waiting["work"]["repair_orders_awaiting_qc"] == 1
         assert waiting["work"]["repair_orders_open"] == 0
@@ -911,16 +854,14 @@ class TestDashboardReflectsTheVisit:
         assert waiting["revenue"]["collected_total"] == 0.0
         assert waiting["revenue"]["outstanding_balance"] == 0.0
 
-        # Inspected and released: the order has left every queue, and no money has
-        # moved yet. Billing is not taking.
+# Inspection is complete and the vehicle is released; billing remains outstanding.
         released = seen["qc_passed"]
         assert released["work"]["repair_orders_awaiting_qc"] == 0
         assert released["work"]["repair_orders_open"] == 0
         assert released["revenue"]["collected_total"] == 0.0
         assert released["revenue"]["outstanding_balance"] == 0.0
 
-        # Billed but unpaid: invoiced money is not collected money. Merging the
-        # two is the single easiest way for a shop to look richer than it is.
+# Issued invoice is unpaid, so billed and collected totals differ.
         issued = seen["issued"]
         assert issued["revenue"]["invoiced_total"] == BILLED_TOTAL
         assert issued["revenue"]["collected_total"] == 0.0
@@ -929,20 +870,15 @@ class TestDashboardReflectsTheVisit:
         assert issued["money"]["invoices_issued"] == 1
         assert issued["money"]["invoices_paid"] == 0
 
-        # The promised payment date is now in the past and the bill is still
-        # open. This is the figure the owner actually acts on -- which bill to
-        # chase first -- and it is the one number a report is most likely to lose
-        # by applying the reporting window to it.
+# Invoice is overdue and unpaid, so it appears in the chase list.
         overdue = seen["issued_overdue"]
         assert overdue["revenue"]["overdue_count"] == 1
         assert overdue["revenue"]["overdue_balance"] == BILLED_TOTAL
-        # Still outstanding, and still counted: overdue is a worse kind of open,
-        # not a different kind of closed.
+# Overdue invoices remain outstanding.
         assert overdue["revenue"]["outstanding_balance"] == BILLED_TOTAL
         assert overdue["revenue"]["invoiced_total"] == BILLED_TOTAL
 
-        # Paid: the money is in and the overdue flag clears, because a settled
-        # bill is not chased.
+# Payment clears the overdue state.
         settled = seen["paid"]
         assert settled["revenue"]["collected_total"] == BILLED_TOTAL
         assert settled["revenue"]["outstanding_balance"] == 0.0
@@ -1006,9 +942,7 @@ class TestDashboardReflectsTheVisit:
         assert ninety["revenue"]["invoiced_total"] == BILLED_TOTAL
         assert ninety["revenue"]["collected_total"] == BILLED_TOTAL
 
-        # A window that ended before any of this happened. This is the control:
-        # it proves the previous two windows were not "identical" merely because
-        # every field is unfiltered.
+# A past report window should exclude the seeded activity.
         yesterday_date = date.today() - timedelta(days=1)
         yesterday = await _dashboard(
             manager_client,
@@ -1016,24 +950,19 @@ class TestDashboardReflectsTheVisit:
             end_date=str(yesterday_date),
         )
 
-        # The queue figures are identical in every window, because a queue is a question
-        # about today. The car is still booked in and the order is still closed;
-        # no reporting period makes either of them leave the shop.
+# Queue counts are snapshots and remain independent of the report window.
         for window in (thirty, ninety, yesterday):
             assert window["work"]["repair_orders_open"] == 0
             assert window["work"]["repair_orders_awaiting_qc"] == 0
             assert window["work"]["part_requests_pending"] == 0
             assert window["operations"]["vehicles_in_shop"] == 1
-            # The status counts are of rows, not of flows, so they are not
-            # windowed either.
+# Status counts are snapshots, not windowed activity.
             assert window["money"]["invoices_paid"] == 1
-            # And with nothing owed there is nothing to chase, in any window.
+# No outstanding balance means no chase item in any window.
             assert window["revenue"]["outstanding_balance"] == 0.0
             assert window["revenue"]["overdue_count"] == 0
 
-        # Only the flow counts move with the window. The car was finished today,
-        # so today and the last ninety days both count the completion and the
-        # payment...
+# Flow totals follow the selected reporting window.
         assert thirty["work"]["completed_in_period"] == 1
         assert ninety["work"]["completed_in_period"] == 1
         # ...while a window that closed yesterday reports neither, and correctly
