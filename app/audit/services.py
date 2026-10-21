@@ -36,9 +36,7 @@ from app.common.exceptions import NotFoundError
 
 logger = logging.getLogger("autofix.audit.services")
 
-# Fields that change on every write and would drown a diff in noise. `updated_at`
-# in particular changes on every single commit, so including it would put a
-# meaningless entry in every single audit row.
+# Exclude volatile fields so they don't clutter audit diffs.
 NOISE_FIELDS: frozenset[str] = frozenset({"updated_at", "last_login_at"})
 
 
@@ -124,10 +122,7 @@ class AuditService:
         """
         spec = get_spec(entity_type)
         if _is_delete(action) and after_state is None:
-            # A hard delete has no "after", so a mechanical diff would report
-            # every column as having become null — technically true and entirely
-            # useless. The full prior row is in ``before_state``, which is what
-            # somebody reading this entry six months later actually wants.
+            # Hard deletes have no after-state; keep the prior row in before_state instead of diffing every column.
             changes: dict | None = {}
         else:
             changes = diff_states(
@@ -255,9 +250,7 @@ class AuditService:
         if actor_id is not None:
             conditions.append(AuditLog.actor_id == str(actor_id))
         if action:
-            # An unknown action is not an error; it simply matches nothing. The
-            # filter is free text typed by an operator, and a log view that 400s
-            # on a typo is worse than one that shows an empty page.
+            # A mistyped action filter should return no matches, not a 400.
             conditions.append(AuditLog.action == action)
         if entity_type:
             conditions.append(AuditLog.entity_type == entity_type)
@@ -266,8 +259,7 @@ class AuditService:
         if date_from is not None:
             conditions.append(AuditLog.created_at >= _start_of_day(date_from))
         if date_to is not None:
-            # `<=` against midnight of the last day would silently drop every
-            # entry written during that day, which is most of them.
+            # Use the next day's start as an exclusive bound to include the full end date.
             conditions.append(AuditLog.created_at < _start_of_day(date_to) + timedelta(days=1))
         return conditions
 
@@ -403,11 +395,7 @@ async def record_auth_event(
             user_agent=user_agent,
         )
     except Exception:  # pragma: no cover - defensive
-        # The one place a failed audit is tolerated, and only because the caller
-        # is about to reject or issue a token: a logging failure must not be the
-        # reason a correct password is refused. The rollback matters as much as
-        # the catch — a failed flush leaves the session unusable, and the very
-        # next thing the request does is commit.
+        # Don't let an audit failure decide the auth result. Roll back because a failed flush leaves the session unusable.
         await db.rollback()
         logger.exception("Failed to record %s audit entry", action.value)
         return None
