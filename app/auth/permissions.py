@@ -107,13 +107,7 @@ class PermissionEnum(str, Enum):
     FEEDBACK_WRITE = "feedback:write"
 
     # Reports / Analytics
-    # Split deliberately. `reports:read` is the shop's own operational numbers —
-    # what it took in, what is open on the floor, what is low on the shelf — and
-    # every member of staff needs those. `reports:analytics` is the management
-    # view: technicians ranked against each other, customers ranked by what they
-    # are worth. Those are instruments for judging named people, so they are
-    # held by the OWNER alone (the OWNER row grants every permission) and are
-    # deliberately absent from SERVICE_ADVISOR.
+    # Staff can read operational reports; rankings of named technicians and customers are owner-only.
     REPORTS_READ = "reports:read"
     REPORTS_ANALYTICS = "reports:analytics"
 
@@ -220,10 +214,7 @@ ROLE_PERMISSIONS: dict[RoleEnum, list[PermissionEnum]] = {
         PermissionEnum.ESTIMATES_READ,
         PermissionEnum.ESTIMATES_APPROVE,
         PermissionEnum.REPAIR_ORDERS_READ,
-        # Read-only on money owed: a customer may look at what they are billed
-        # and pay it, but only the shop writes the bill. `invoices:write` and
-        # `invoices:manage` are deliberately absent — a customer who could raise
-        # or void an invoice would be issuing their own statement.
+        # Customers can view and pay invoices, but cannot create, edit, or void them.
         PermissionEnum.INVOICES_READ,
         PermissionEnum.PAYMENTS_READ,
         PermissionEnum.PAYMENTS_WRITE,
