@@ -109,7 +109,6 @@ class CustomerService:
 
     async def create_customer(self, customer_data: CustomerCreate) -> Customer:
         """Create a new customer."""
-        # Check for duplicate email if provided
         if customer_data.email:
             existing = await self.db.execute(
                 select(Customer).where(Customer.email == customer_data.email)
@@ -128,7 +127,6 @@ class CustomerService:
             notes=customer_data.notes,
         )
 
-        # Handle addresses
         if customer_data.addresses:
             for addr_data in customer_data.addresses:
                 address = Address(
@@ -158,13 +156,10 @@ class CustomerService:
             if value is not None:
                 setattr(customer, field, value)
 
-        # Handle addresses
         if customer_data.addresses is not None:
-            # Clear existing addresses
             await self.db.execute(
                 Address.__table__.delete().where(Address.customer_id == customer.id)
             )
-            # Add new addresses
             for addr_data in customer_data.addresses:
                 address = Address(
                     street=addr_data.street,
@@ -192,7 +187,6 @@ class CustomerService:
     async def link_user(self, customer_id: UUID | str, user_id: UUID | str) -> Customer:
         """Link a customer to a User account for portal access."""
         customer = await self.get_by_id(customer_id)
-        # Verify user exists
         result = await self.db.execute(select(User).where(User.id == str(user_id)))
         user = result.scalar_one_or_none()
         if not user:
