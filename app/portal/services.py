@@ -340,9 +340,7 @@ class PortalService:
             ).scalars().all()
         )
 
-        # Spend is counted from settled invoices only: a draft or a written-off
-        # bill is not money the customer spent, and an unpaid one is not history
-        # they have completed.
+        # Only PAID and PARTIALLY_PAID invoices contribute to this total.
         total_spent = round(
             sum(
                 float(i.total)
@@ -448,11 +446,7 @@ class PortalService:
             Estimate.customer_id == self.customer_id
         )
         if open_only:
-            # Only the ones actually waiting on a decision. An expired estimate
-            # is not something the customer can act on, so listing it as "open"
-            # would be asking for a decision that will be refused — the customer
-            # would tap approve and be told no. The expiry is re-applied here in
-            # SQL rather than filtered in Python, so the count and the list agree.
+            # Exclude expired estimates in SQL so the count and list agree.
             stmt = stmt.where(
                 Estimate.status.in_(["SENT", "PARTIALLY_APPROVED"]),
                 or_(
@@ -637,8 +631,7 @@ class PortalService:
             status_view=describe(appointment.status, APPOINTMENT_STATUS),
             scheduled_start=appointment.scheduled_start,
             scheduled_end=appointment.scheduled_end,
-            # The shop's bay plan is its own business, and the technician's name
-            # is not something a customer portal needs to publish.
+            # Do not expose internal bay assignments or technician names through the portal.
             bay=None,
             notes=appointment.customer_concern,
             created_at=appointment.created_at,
