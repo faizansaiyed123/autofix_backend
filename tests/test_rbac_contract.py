@@ -62,7 +62,7 @@ ROUTERS: list[tuple[object, str]] = [
 # mistake waiting to be read as a leak.
 CUSTOMER_REACHABLE = ("/api/v1/portal", "/api/v1/notifications")
 
-TRACKER = Path(__file__).resolve().parents[2] / "PROJECT_PROGRESS.md"
+TRACKER = Path(__file__).resolve().parents[1] / "PROJECT_PROGRESS.md"
 
 
 def _permissions_in_closure(func: Callable, depth: int = 0) -> set[PermissionEnum]:
