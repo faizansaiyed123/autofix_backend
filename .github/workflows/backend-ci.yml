@@ -46,3 +46,8 @@ jobs:
 
       - name: Run backend test suite
         run: pytest -q
+        env:
+          DATABASE_URL: postgresql+asyncpg://autofix:autofix@localhost:5432/autofix_test
+          SECRET_KEY: ci-only-autofix-secret
+          APP_ENV: test
+          BCRYPT_ROUNDS: "4"
