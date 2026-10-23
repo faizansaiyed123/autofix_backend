@@ -799,6 +799,33 @@ class TestInvoiceLifecycle:
         assert issued["issued_at"] is not None
 
     @pytest.mark.asyncio
+    async def test_cannot_issue_after_repair_order_leaves_billable_status(
+        self, owner_client: AsyncClient, test_customer: Customer, test_vehicle: Vehicle
+    ):
+        """A draft cannot be sent after its repair order has entered QC rework."""
+        ro = await create_billable_ro(owner_client, test_customer, test_vehicle)
+        invoice = await create_invoice(
+            owner_client, ro, extra_items=[manual_line(unit_price=100.0)]
+        )
+
+        # A QC-passed order may return to COMPLETED when it needs another check.
+        reopened = await owner_client.patch(
+            f"{RO_URL}{ro['id']}/status", params={"status": "COMPLETED"}
+        )
+        assert reopened.status_code == 200, reopened.text
+        assert reopened.json()["status"] == "COMPLETED"
+
+        response = await owner_client.post(f"{INVOICES_URL}{invoice['id']}/issue")
+        assert response.status_code == 400
+        assert "quality control has passed" in response.json()["detail"]
+        assert "COMPLETED" in response.json()["detail"]
+
+        unchanged = await owner_client.get(f"{INVOICES_URL}{invoice['id']}")
+        assert unchanged.status_code == 200
+        assert unchanged.json()["status"] == "DRAFT"
+        assert unchanged.json()["issued_at"] is None
+
+    @pytest.mark.asyncio
     async def test_an_issued_invoice_stops_being_editable(
         self, owner_client: AsyncClient, test_customer: Customer, test_vehicle: Vehicle
     ):
