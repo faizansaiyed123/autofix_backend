@@ -389,6 +389,22 @@ class InvoiceService:
         invoice = await self.get_by_id(invoice_id)
         self._assert_editable(invoice)
 
+        repair_order = (
+            await self.db.execute(
+                select(RepairOrder).where(RepairOrder.id == str(invoice.repair_order_id))
+            )
+        ).scalar_one_or_none()
+        if repair_order is None:
+            raise NotFoundError(
+                f"Repair order {invoice.repair_order_id} for invoice {invoice.invoice_number} not found"
+            )
+        if repair_order.status not in BILLABLE_RO_STATUSES:
+            raise BusinessRuleError(
+                f"Repair order {repair_order.ro_number} is {repair_order.status}; "
+                "an invoice can only be issued after quality control has passed "
+                "(QC_PASSED or DELIVERED)"
+            )
+
         if not invoice.items:
             raise BusinessRuleError("Cannot issue an invoice with no line items")
         if round_money(float(invoice.total)) <= 0:
