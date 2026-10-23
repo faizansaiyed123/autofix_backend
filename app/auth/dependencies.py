@@ -61,6 +61,8 @@ async def get_current_user(
 
     if not user:
         raise AuthenticationError("User not found")
+    if payload.get("ver", 0) != user.auth_version:
+        raise AuthenticationError("Session has been revoked; please sign in again")
 
     return user
 

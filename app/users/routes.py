@@ -51,6 +51,7 @@ async def list_users(
             phone=user.phone,
             is_active=user.is_active,
             is_staff=user.is_staff,
+        email_verified=user.email_verified,
             roles=roles,
         ))
 
@@ -79,6 +80,7 @@ async def create_user(
         phone=user.phone,
         is_active=user.is_active,
         is_staff=user.is_staff,
+        email_verified=user.email_verified,
         roles=roles,
     )
 
@@ -101,6 +103,7 @@ async def get_user(
         phone=user.phone,
         is_active=user.is_active,
         is_staff=user.is_staff,
+        email_verified=user.email_verified,
         roles=roles,
     )
 
@@ -124,6 +127,7 @@ async def update_user(
         phone=user.phone,
         is_active=user.is_active,
         is_staff=user.is_staff,
+        email_verified=user.email_verified,
         roles=roles,
     )
 

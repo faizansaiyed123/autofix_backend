@@ -6,6 +6,7 @@ Provides JWT token creation/validation and password hashing using bcrypt.
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -29,6 +30,11 @@ def hash_password(password: str) -> str:
     salt = bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
     hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode("utf-8")
+
+
+# Unknown/inactive-account logins also pay the password-verification cost.
+# The value is randomized at process start and is never assigned to a user.
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -74,6 +80,7 @@ def create_access_token(
 def create_refresh_token(
     subject: str,
     expires_delta: timedelta | None = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     """Create a JWT refresh token.
 
@@ -92,7 +99,10 @@ def create_refresh_token(
         "exp": datetime.now(UTC) + expires_delta,
         "type": "refresh",
         "iat": datetime.now(UTC),
+        "jti": secrets.token_urlsafe(18),
     }
+    if extra_claims:
+        to_encode.update(extra_claims)
 
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -126,6 +136,7 @@ def generate_password_reset_token(email: str, expires_minutes: int = 60) -> str:
         "type": "password_reset",
         "email": email,
         "iat": datetime.now(UTC),
+        "jti": secrets.token_urlsafe(18),
     }
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 

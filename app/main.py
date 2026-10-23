@@ -3,6 +3,8 @@
 Main FastAPI application entry point.
 """
 
+import asyncio
+
 from app.core.config import settings
 from app.core.logging import configure_logging
 
@@ -17,6 +19,7 @@ from app.auth.dependencies import require_staff
 from app.auth.routes import router as auth_router
 from app.checkins.routes import router as checkins_router
 from app.core.database import close_engine, init_db
+from app.core.email import run_email_outbox_worker
 from app.customers.routes import router as customers_router
 from app.estimates.routes import router as estimates_router
 from app.inspections.routes import router as inspections_router
@@ -43,10 +46,25 @@ def create_app() -> FastAPI:
         title=settings.COMPANY_NAME,
         description="AutoFix - Auto Repair Garage Management & Operations Platform",
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=None if settings.is_production else "/docs",
+        redoc_url=None if settings.is_production else "/redoc",
+        openapi_url=None if settings.is_production else "/openapi.json",
     )
+
+    if settings.is_production and (
+        not settings.ALLOWED_ORIGINS or "*" in settings.ALLOWED_ORIGINS
+    ):
+        raise RuntimeError(
+            "Production must configure ALLOWED_ORIGINS with explicit frontend origins; wildcards are unsafe."
+        )
+    if settings.is_production and settings.APP_DEBUG:
+        raise RuntimeError("APP_DEBUG must be false in production.")
+    if settings.is_production and len(settings.SECRET_KEY.encode("utf-8")) < 32:
+        raise RuntimeError("Production SECRET_KEY must be at least 32 bytes.")
+    if settings.is_production and not settings.AUTH_RATE_LIMIT_TRUST_PROXY_HEADERS:
+        raise RuntimeError(
+            "Production must explicitly enable AUTH_RATE_LIMIT_TRUST_PROXY_HEADERS behind its trusted edge proxy."
+        )
 
     app.add_middleware(
         CORSMiddleware,
@@ -58,12 +76,45 @@ def create_app() -> FastAPI:
 
     api_prefix = "/api/v1"
 
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if request.url.path.startswith("/api/v1/auth/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+            response.headers.setdefault("Pragma", "no-cache")
+        if settings.is_production:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
     @app.on_event("startup")
     async def startup() -> None:
         await init_db()
+        stop_event = asyncio.Event()
+        app.state.email_outbox_stop = stop_event
+        app.state.email_outbox_task = asyncio.create_task(
+            run_email_outbox_worker(stop_event),
+            name="autofix-email-outbox",
+        )
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
+        stop_event = getattr(app.state, "email_outbox_stop", None)
+        worker = getattr(app.state, "email_outbox_task", None)
+        if stop_event is not None:
+            stop_event.set()
+        if worker is not None:
+            try:
+                await asyncio.wait_for(worker, timeout=15)
+            except TimeoutError:
+                worker.cancel()
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
         await close_engine()
 
     @app.get("/health", tags=["Health"])
