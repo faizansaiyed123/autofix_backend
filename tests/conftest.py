@@ -39,6 +39,8 @@ TestSessionFactory = None
 
 # Tables managed during cleanup (in dependency order)
 _CLEAN_TABLES = [
+    "email_outbox",
+    "auth_rate_limits",
     "audit_logs",
     "notifications",
     "payments",
@@ -119,10 +121,22 @@ async def setup_test_db():
 
 
 @pytest.fixture()
+def test_session_factory():
+    """Expose independent sessions for concurrency tests."""
+    if TestSessionFactory is None:
+        raise RuntimeError("Test database is not initialized")
+    return TestSessionFactory
+
+
+@pytest.fixture()
 async def db() -> AsyncGenerator[AsyncSession, None]:
     """Provide a database session for each test with cleanup after."""
     async with TestSessionFactory() as session:
         yield session
+        # Requests share this fixture session; discard any stale identity-map
+        # objects before bulk SQL cleanup mutates rows underneath the ORM.
+        await session.rollback()
+        session.expunge_all()
         for table in _CLEAN_TABLES:
             await session.execute(text(f"DELETE FROM {table} CASCADE"))
         await session.commit()
@@ -147,15 +161,21 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 
 async def _get_auth_token(session: AsyncSession, email: str) -> str:
-    """Get an auth access token for a demo user."""
+    """Get an access-only test token without mutating the demo user's session state."""
     from app.auth.services import AuthService
+    from app.core.security import create_access_token
 
-    auth_service = AuthService(session)
-    user = await auth_service.get_user_by_email(email)
+    user = await AuthService(session).get_user_by_email(email)
     if not user:
         raise RuntimeError(f"Demo user not found: {email}")
-    access_token, _ = auth_service.generate_tokens(user)
-    return access_token
+    return create_access_token(
+        subject=str(user.id),
+        extra_claims={
+            "user_id": str(user.id),
+            "email": user.email,
+            "ver": user.auth_version,
+        },
+    )
 
 
 @pytest.fixture()

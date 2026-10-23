@@ -15,6 +15,7 @@ from app.audit import models as audit_models
 from app.auth import models as auth_models
 from app.checkins import models as checkin_models
 from app.customers import models as customer_models
+from app.core import email_models
 from app.estimates import models as estimate_models
 from app.inspections import models as inspection_models
 from app.inventory import models as inventory_models
@@ -37,6 +38,7 @@ __all__ = [
     "auth_models",
     "checkin_models",
     "customer_models",
+    "email_models",
     "estimate_models",
     "inspection_models",
     "inventory_models",

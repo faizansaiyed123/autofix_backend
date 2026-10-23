@@ -30,6 +30,25 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_TIMEOUT: int = 30
+
+    # Email delivery via standard-library SMTP
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM_EMAIL: str | None = None
+    SMTP_USE_STARTTLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 10
+    PUBLIC_APP_URL: str = "http://localhost:3000"
+    EMAIL_OUTBOX_BATCH_SIZE: int = 10
+    EMAIL_OUTBOX_POLL_SECONDS: float = 2.0
+    EMAIL_OUTBOX_MAX_ATTEMPTS: int = 6
+    EMAIL_OUTBOX_LOCK_SECONDS: int = 120
+    AUTH_RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

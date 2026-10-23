@@ -7,12 +7,16 @@ Uses UUID v7 primary keys inherited from TimestampedBase.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer,
+    String, Text, UniqueConstraint, text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import TimestampedBase
+from app.core.database import Base, TimestampedBase
 
 
 class Role(TimestampedBase):
@@ -82,6 +86,25 @@ class User(TimestampedBase):
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_staff: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    email_verification_token_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    email_verification_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    password_reset_token_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    password_reset_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    refresh_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    auth_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
 
     user_roles_: Mapped[list[UserRole]] = relationship(
         "UserRole", back_populates="user", cascade="all, delete-orphan"
@@ -121,4 +144,21 @@ class UserRole(TimestampedBase):
 
     __table_args__ = (
         UniqueConstraint("user_id", "role_id", name="uq_user_role"),
+    )
+
+
+
+class AuthRateLimit(Base):
+    """Shared, atomic request counters used to limit auth abuse across workers."""
+
+    __tablename__ = "auth_rate_limits"
+
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("attempt_count >= 1", name="ck_auth_rate_limits_attempt_count"),
+        Index("ix_auth_rate_limits_last_seen_at", "last_seen_at"),
     )

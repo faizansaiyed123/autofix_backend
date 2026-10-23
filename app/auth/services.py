@@ -5,16 +5,19 @@ Handles user authentication, token management, and RBAC lookups.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import logging
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Permission, Role, RolePermission, User, UserRole
 from app.auth.permissions import PermissionEnum, RoleEnum
 from app.core.security import (
+    DUMMY_PASSWORD_HASH,
     create_access_token,
     create_refresh_token,
     generate_password_reset_token,
@@ -37,19 +40,19 @@ class AuthService:
 
         Returns the user if credentials are valid and user is active.
         """
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(func.lower(User.email) == email.lower())
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
 
         if not user or not user.is_active:
-            logger.warning("Authentication failed for email: %s", email)
+            await asyncio.to_thread(verify_password, password, DUMMY_PASSWORD_HASH)
+            logger.warning("Authentication failed for unknown or inactive account")
             return None
 
-        if not verify_password(password, user.password_hash):
-            logger.warning("Password mismatch for email: %s", email)
+        if not await asyncio.to_thread(verify_password, password, user.password_hash):
+            logger.warning("Authentication failed due to invalid credentials")
             return None
 
-        logger.info("User authenticated: %s", user.email)
         return user
 
     async def get_user_permissions(self, user: User) -> list[str]:
@@ -101,7 +104,7 @@ class AuthService:
 
     async def get_user_by_email(self, email: str) -> User | None:
         """Fetch a user by email."""
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(func.lower(User.email) == email.lower())
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -109,9 +112,17 @@ class AuthService:
         """Generate access and refresh tokens for a user."""
         access_token = create_access_token(
             subject=str(user.id),
-            extra_claims={"user_id": str(user.id), "email": user.email},
+            extra_claims={
+                "user_id": str(user.id),
+                "email": user.email,
+                "ver": user.auth_version,
+            },
         )
-        refresh_token = create_refresh_token(subject=str(user.id))
+        refresh_token = create_refresh_token(
+            subject=str(user.id),
+            extra_claims={"ver": user.auth_version},
+        )
+        user.refresh_token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
         return access_token, refresh_token
 
     def create_password_reset_token(self, email: str) -> str:
@@ -131,9 +142,13 @@ class AuthService:
         if not user:
             return False
 
-        user.password_hash = hash_password(new_password)
+        user.password_hash = await asyncio.to_thread(hash_password, new_password)
+        user.auth_version += 1
+        user.refresh_token_hash = None
+        user.password_reset_token_hash = None
+        user.password_reset_expires_at = None
         await self.db.commit()
-        logger.info("Password reset for user: %s", user.email)
+        logger.info("User password reset")
         return True
 
     async def assign_role(self, user: User, role_name: RoleEnum | str) -> User:
