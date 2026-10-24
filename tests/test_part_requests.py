@@ -214,7 +214,8 @@ class TestPartRequestWorkflow:
         )
         request_id = raised.json()["id"]
         await parts_client.post(
-            f"{PART_REQUESTS_URL}{request_id}/decision", json={"decision": "REJECTED"}
+            f"{PART_REQUESTS_URL}{request_id}/decision",
+            json={"decision": "REJECTED", "decision_reason": "request not approvable"},
         )
         again = await parts_client.post(
             f"{PART_REQUESTS_URL}{request_id}/decision", json={"decision": "APPROVED"}
