@@ -129,6 +129,36 @@ class TestPartRequestWorkflow:
         assert rejected.json()["status"] == "REJECTED"
 
     @pytest.mark.asyncio
+    async def test_rejection_requires_a_nonblank_reason(
+        self, technician_client: AsyncClient, parts_client: AsyncClient,
+        test_customer: Customer, test_vehicle: Vehicle,
+    ):
+        """The API cannot reject a part request without a meaningful reason."""
+        ro = await create_in_progress_ro(technician_client, test_customer, test_vehicle)
+        raised = await technician_client.post(
+            PART_REQUESTS_URL,
+            json={
+                "repair_order_id": ro["id"],
+                "part_name": "Reason guard part",
+                "reason": "Testing the rejection reason rule",
+            },
+        )
+        assert raised.status_code == 201, raised.text
+        request_id = raised.json()["id"]
+
+        rejected = await parts_client.post(
+            f"{PART_REQUESTS_URL}{request_id}/decision",
+            json={"decision": "REJECTED", "decision_reason": "   "},
+        )
+        assert rejected.status_code == 422, rejected.text
+        assert "decision_reason is required" in rejected.text
+
+        saved = await parts_client.get(f"{PART_REQUESTS_URL}{request_id}")
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["status"] == "PENDING"
+        assert saved.json()["decision_reason"] is None
+
+    @pytest.mark.asyncio
     async def test_fulfil_after_approval(
         self, technician_client: AsyncClient, parts_client: AsyncClient,
         test_customer: Customer, test_vehicle: Vehicle,
