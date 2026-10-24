@@ -209,6 +209,14 @@ class PartRequestService:
             )
 
         request = await self.get_by_id(request_id)
+        if (
+            decided_by_id
+            and request.requested_by_id
+            and str(request.requested_by_id) == str(decided_by_id)
+        ):
+            raise BusinessRuleError(
+                "The person who raised a part request cannot approve or reject their own request"
+            )
         self._transition(request, new_status)
 
         if decided_by_id:
