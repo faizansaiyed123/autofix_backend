@@ -314,6 +314,36 @@ class TestPartRequestRbac:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
+    async def test_owner_cannot_decide_a_part_request_they_raised(
+        self, owner_client: AsyncClient, test_customer: Customer, test_vehicle: Vehicle
+    ):
+        """The owner has broad permissions but still cannot approve their own request."""
+        ro = await create_in_progress_ro(owner_client, test_customer, test_vehicle)
+        raised = await owner_client.post(
+            PART_REQUESTS_URL,
+            json={
+                "repair_order_id": ro["id"],
+                "part_name": "Self-approval guard part",
+                "quantity": 1,
+                "reason": "Verifies the requester/decider identity rule",
+            },
+        )
+        assert raised.status_code == 201, raised.text
+        request_id = raised.json()["id"]
+
+        attempted = await owner_client.post(
+            f"{PART_REQUESTS_URL}{request_id}/decision",
+            json={"decision": "APPROVED"},
+        )
+        assert attempted.status_code == 400, attempted.text
+        assert "raised" in attempted.json()["detail"].lower()
+
+        saved = await owner_client.get(f"{PART_REQUESTS_URL}{request_id}")
+        assert saved.status_code == 200
+        assert saved.json()["status"] == "PENDING"
+        assert saved.json()["decided_by_id"] is None
+
+    @pytest.mark.asyncio
     async def test_parts_staff_can_read_queue(
         self, parts_client: AsyncClient, test_customer: Customer, test_vehicle: Vehicle
     ):
