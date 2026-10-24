@@ -207,6 +207,10 @@ class PartRequestService:
             raise BusinessRuleError(
                 "A decision must be APPROVED or REJECTED"
             )
+        if new_status == PartRequestStatus.REJECTED.value and not (
+            decision_reason and decision_reason.strip()
+        ):
+            raise BusinessRuleError("A reason is required when rejecting a part request")
 
         request = await self.get_by_id(request_id)
         if (
@@ -222,7 +226,7 @@ class PartRequestService:
         if decided_by_id:
             request.decided_by_id = str(decided_by_id)
         if decision_reason is not None:
-            request.decision_reason = decision_reason
+            request.decision_reason = decision_reason.strip() or None
         request.decided_at = _utcnow()
 
         await self.db.commit()
