@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.common.schemas import BaseSchema
 from app.part_requests.models import PartRequestStatus
@@ -57,6 +57,15 @@ class PartRequestDecision(BaseSchema):
         if value not in (PartRequestStatus.APPROVED.value, PartRequestStatus.REJECTED.value):
             raise ValueError("decision must be APPROVED or REJECTED")
         return value
+
+    @model_validator(mode="after")
+    def _require_rejection_reason(self) -> "PartRequestDecision":
+        if self.decision == PartRequestStatus.REJECTED.value and not (
+            self.decision_reason and self.decision_reason.strip()
+        ):
+            raise ValueError("decision_reason is required when rejecting a part request")
+        return self
+
 
 
 class PartRequestRead(BaseSchema):
