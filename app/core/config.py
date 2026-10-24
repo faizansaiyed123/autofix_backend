@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     EMAIL_OUTBOX_MAX_ATTEMPTS: int = 6
     EMAIL_OUTBOX_LOCK_SECONDS: int = 120
     AUTH_RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
+    # Keep production defaults; isolated E2E runs can override these to avoid
+    # throttling legitimate repeated sign-ins from a single browser-test IP.
+    AUTH_LOGIN_IP_RATE_LIMIT: int = 120
+    AUTH_LOGIN_EMAIL_RATE_LIMIT: int = 8
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
