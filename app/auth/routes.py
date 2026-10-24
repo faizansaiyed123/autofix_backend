@@ -49,6 +49,7 @@ from app.core.email import (
 )
 from app.customers.models import ContactMethod, Customer, CustomerStatus
 from app.core.database import AsyncSession, get_session
+from app.core.config import settings
 from app.core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     hash_password,
@@ -227,8 +228,20 @@ async def login(
     stored; the password is never anywhere near this code.
     """
     ip = client_address(request)
-    await enforce_rate_limit(session, scope="login-ip", identity=ip, limit=120, window_seconds=900)
-    await enforce_rate_limit(session, scope="login-email", identity=credentials.email, limit=8, window_seconds=900)
+    await enforce_rate_limit(
+        session,
+        scope="login-ip",
+        identity=ip,
+        limit=settings.AUTH_LOGIN_IP_RATE_LIMIT,
+        window_seconds=900,
+    )
+    await enforce_rate_limit(
+        session,
+        scope="login-email",
+        identity=credentials.email,
+        limit=settings.AUTH_LOGIN_EMAIL_RATE_LIMIT,
+        window_seconds=900,
+    )
     auth_service = AuthService(session)
     user = await auth_service.authenticate(credentials.email, credentials.password)
 
