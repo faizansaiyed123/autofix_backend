@@ -9,7 +9,7 @@ and kept in process memory. It is a demonstration surface, not a production API.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import unquote
 
@@ -108,7 +108,7 @@ WRITE_PERMISSION = {
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iso(days: int = 0, hour: int = 10) -> str:
@@ -616,6 +616,45 @@ async def demo_dispatch(path: str, request: Request) -> Any:
         _require(person, "audit_logs:read")
         return {"entity_types": ["customer", "vehicle", "appointment", "estimate", "repair_order", "invoice", "payment"]}
 
+    if parts[0] == "inventory" and len(parts) == 2 and parts[1] == "transactions":
+        _require(person, "inventory:read" if method == "GET" else "inventory:create")
+        if method == "GET":
+            return _paged(STATE["inventory_transactions"], query)
+        if method == "POST":
+            part = _get("parts", str(body.get("part_id", "")))
+            quantity = float(body.get("quantity", 0))
+            if quantity <= 0:
+                raise HTTPException(status_code=422, detail="Quantity must be greater than zero")
+            before = int(part["quantity_on_hand"])
+            after = before - quantity if body.get("transaction_type") == "ISSUE" else before + quantity
+            if after < 0:
+                raise HTTPException(status_code=422, detail="Insufficient stock on hand")
+            part["quantity_on_hand"] = after
+            return _create("inventory_transactions", "txn", body | {"quantity_before": before, "quantity_after": after, "unit_cost": body.get("unit_cost", part["unit_cost"])}, person, "inventory_transaction")
+    if parts[0] == "inventory" and len(parts) == 3 and parts[1] == "transactions" and method == "GET":
+        _require(person, "inventory:read")
+        return _copy(_get("inventory_transactions", parts[2]))
+    if parts[0] == "purchase_orders" and parts[1:] and parts[1] == "by-number" and len(parts) == 3 and method == "GET":
+        _require(person, "purchase_orders:read")
+        order = next((x for x in STATE["purchase_orders"] if x["po_number"] == parts[2]), None)
+        if order is None:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        return _copy(order)
+    if parts[0] == "purchase_orders" and parts[1:] == ["from-low-stock"] and method == "POST":
+        _require(person, "purchase_orders:create")
+        supplier = _get("suppliers", str(body.get("supplier_id", "")))
+        selected = [p for p in STATE["parts"] if p["quantity_on_hand"] <= p["reorder_level"]]
+        selected_ids = body.get("part_ids")
+        if selected_ids:
+            selected = [p for p in selected if p["id"] in selected_ids]
+        multiplier = max(1, int(body.get("shortage_multiplier", 1)))
+        lines = [{"id": _new_id("po-item"), "part_id": p["id"], "part_number": p["part_number"], "part_name": p["name"], "quantity_ordered": max(1, p["reorder_level"] - p["quantity_on_hand"]) * multiplier, "quantity_received": 0, "unit_cost": p["unit_cost"], "line_total": max(1, p["reorder_level"] - p["quantity_on_hand"]) * multiplier * p["unit_cost"]} for p in selected]
+        subtotal = sum(x["line_total"] for x in lines)
+        return _create("purchase_orders", "po", {"supplier_id": supplier["id"], "supplier_name": supplier["name"], "status": "DRAFT", "order_date": _day(), "expected_delivery_date": body.get("expected_delivery_date"), "subtotal": subtotal, "tax_amount": float(body.get("tax_amount", 0)), "shipping_amount": float(body.get("shipping_amount", 0)), "total_amount": subtotal + float(body.get("tax_amount", 0)) + float(body.get("shipping_amount", 0)), "currency": "USD", "notes": body.get("notes"), "internal_notes": None, "sent_at": None, "received_at": None, "cancelled_at": None, "cancel_reason": None, "item_count": len(lines), "total_units_ordered": sum(x["quantity_ordered"] for x in lines), "total_units_received": 0, "is_fully_received": False, "is_terminal": False, "is_editable": True, "is_overdue": False, "items": lines}, person, "purchase_order")
+    if parts[0] == "payments" and parts[1:] == ["summary"] and method == "GET":
+        _require(person, "payments:read")
+        active = [p for p in STATE["payments"] if p["status"] == "COMPLETED"]
+        return {"payment_count": len(active), "total_collected": sum(x["amount"] for x in active), "voided_count": sum(x["status"] == "VOIDED" for x in STATE["payments"])}
     root = parts[0]
     collection = COLLECTIONS.get(root)
     if collection is None:
@@ -750,6 +789,14 @@ async def demo_dispatch(path: str, request: Request) -> Any:
             if method == "DELETE":
                 item["items"].remove(line)
                 return Response(status_code=204)
+    if root == "suppliers":
+        if action == "summary" and method == "GET":
+            orders = [x for x in STATE["purchase_orders"] if x["supplier_id"] == item["id"]]
+            return {"supplier_id": item["id"], "order_count": len(orders), "total_order_value": sum(x["total_amount"] for x in orders), "open_order_count": sum(x["status"] not in {"RECEIVED", "CANCELLED"} for x in orders)}
+        if action == "deactivate" and method == "POST":
+            item["is_active"] = False
+            item["status"] = "INACTIVE"
+            return _copy(item)
     if root == "repair_orders":
         _require(person, "repair_orders:update")
         if action == "summary" and method == "GET":
@@ -857,6 +904,9 @@ async def demo_dispatch(path: str, request: Request) -> Any:
             if found is None:
                 raise HTTPException(status_code=404, detail="Purchase order not found")
             return _copy(found)
+        if action == "status" and method == "PATCH":
+            item["status"] = body.get("status", query.get("status", item["status"]))
+            return _copy(item)
         if action == "send" and method == "POST":
             item["status"], item["sent_at"] = "SENT", _now().isoformat()
             return _copy(item)
