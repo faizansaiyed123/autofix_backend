@@ -60,7 +60,15 @@ async def test_shop_records_and_repair_task_transition(client: AsyncClient):
     assert changed.json()["status"] == "COMPLETED"
 
     after = await client.get("/api/v1/repair_orders/repair-1", headers=headers)
-    assert after.json()["all_tasks_done"] is True
+    assert after.json()["all_tasks_done"] is False
+
+    await client.patch(
+        "/api/v1/repair_orders/repair-1/tasks/task-1/status",
+        headers=headers,
+        json={"status": "COMPLETED"},
+    )
+    completed = await client.get("/api/v1/repair_orders/repair-1", headers=headers)
+    assert completed.json()["all_tasks_done"] is True
 
 
 @pytest.mark.asyncio
